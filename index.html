@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1420">
+<title>ST7735 Studio — ESP32 屏幕界面设计器</title>
+<meta name="description" content="在线设计 160x128 TFT 界面：拖拽布局、模板库、图片转点阵、配色工具、Arduino 代码生成">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="logo">◧</span>
+    <span class="title">ST7735 <b>Studio</b></span>
+  </div>
+  <nav class="topnav">
+    <button class="navbtn active" data-view="design">设计</button>
+    <button class="navbtn" data-view="templates">模板</button>
+    <button class="navbtn" data-view="bitmap">图标</button>
+    <button class="navbtn" data-view="palette">配色</button>
+    <button class="navbtn" data-view="code">代码</button>
+    <button class="navbtn" data-view="help">帮助</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= 设计 ================= -->
+  <section id="view-design" class="view active">
+    <div class="cols">
+      <!-- 左：画布 -->
+      <div class="col-left">
+        <div class="card">
+          <div class="card-head">
+            <span>屏幕预览 160×128</span>
+            <span class="zoom-group">
+              <button class="zoom" data-z="2">2x</button>
+              <button class="zoom active" data-z="3">3x</button>
+              <button class="zoom" data-z="4">4x</button>
+              <button id="btn-grid" class="zoom">网格</button>
+              <button id="btn-rot" class="zoom">翻转</button>
+            </span>
+          </div>
+          <div class="stage">
+            <canvas id="screen" width="480" height="384"></canvas>
+          </div>
+          <p class="hint" id="hint">拖动元素调整位置；选中后拖角或边中点改尺寸</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span>添加元素</span></div>
+          <div class="btn-row" id="add-row"></div>
+        </div>
+      </div>
+
+      <!-- 右：属性 -->
+      <div class="col-right">
+        <div class="card">
+          <div class="card-head">
+            <span>元素列表</span>
+            <span class="count" id="el-count">0</span>
+          </div>
+          <div class="el-list" id="el-list"></div>
+        </div>
+
+        <div class="card" id="props" style="display:none">
+          <div class="card-head"><span id="prop-title">属性</span></div>
+          <div class="prop-body">
+            <div class="xyz" id="prop-xyz"></div>
+
+            <div class="nudge" id="nudge-pos">
+              <button data-nudge="-1,0">←</button><button data-nudge="1,0">→</button>
+              <button data-nudge="0,-1">↑</button><button data-nudge="0,1">↓</button>
+            </div>
+            <div class="nudge" id="nudge-size">
+              <button data-size="-1,0">宽−</button><button data-size="1,0">宽+</button>
+              <button data-size="0,-1">高−</button><button data-size="0,1">高+</button>
+            </div>
+
+            <label>数据绑定</label>
+            <select id="prop-bind"></select>
+
+            <label>颜色</label>
+            <div class="swatches" id="prop-colors"></div>
+            <input type="color" id="prop-color" class="colorpick">
+
+            <div id="prop-size-wrap">
+              <label>字号</label>
+              <div class="btn-row" id="prop-sizes"></div>
+            </div>
+
+            <div id="prop-radius-wrap">
+              <label>圆角</label>
+              <div class="btn-row" id="prop-radius"></div>
+            </div>
+
+            <div id="prop-icon-wrap">
+              <label>图标</label>
+              <div class="btn-row" id="prop-icons"></div>
+            </div>
+
+            <div id="prop-text-wrap">
+              <label>文字内容</label>
+              <input type="text" id="prop-text" placeholder="输入文字">
+            </div>
+
+            <label>图层</label>
+            <div class="btn-row">
+              <button data-layer="-1">下移</button>
+              <button data-layer="1">上移</button>
+              <button id="btn-dup">复制</button>
+              <button id="btn-del" class="danger">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span>主题配色</span></div>
+          <div class="btn-row" id="theme-row"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span>布局备份（存本地）</span></div>
+          <div class="btn-row">
+            <button id="btn-save">保存</button>
+            <button id="btn-reset">清空</button>
+          </div>
+          <div class="slots" id="slots"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 模板 ================= -->
+  <section id="view-templates" class="view">
+    <div class="card">
+      <div class="card-head"><span>界面模板</span><span class="hint">点选载入，之后可继续编辑</span></div>
+      <div class="tpl-grid" id="tpl-grid"></div>
+    </div>
+  </section>
+
+  <!-- ================= 图标 ================= -->
+  <section id="view-bitmap" class="view">
+    <div class="cols">
+      <div class="col-left">
+        <div class="card">
+          <div class="card-head"><span>1. 选择图片</span></div>
+          <input type="file" id="bmp-file" accept="image/*" class="file">
+          <p class="hint">建议用线条简单的图标，PNG 透明背景效果最好</p>
+        </div>
+
+        <div class="card" id="bmp-ctrl" style="display:none">
+          <div class="card-head"><span>2. 调整参数</span></div>
+          <label>宽 <b id="bmp-wv">32</b> px</label>
+          <input type="range" id="bmp-w" min="4" max="160" value="32">
+          <label>高 <b id="bmp-hv">32</b> px</label>
+          <input type="range" id="bmp-h" min="4" max="128" value="32">
+          <label>二值化阈值 <b id="bmp-tv">128</b></label>
+          <input type="range" id="bmp-t" min="0" max="255" value="128">
+          <div class="btn-row">
+            <button id="bmp-inv">反色</button>
+            <button id="bmp-place" class="primary">放到画布</button>
+            <button id="bmp-download">下载 .h</button>
+          </div>
+          <div class="xyz" id="bmp-info"></div>
+        </div>
+      </div>
+
+      <div class="col-right">
+        <div class="card">
+          <div class="card-head"><span>预览</span></div>
+          <div class="stage small">
+            <canvas id="bmp-preview" width="256" height="256"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span>C 数组代码</span></div>
+          <textarea id="bmp-code" class="code" readonly></textarea>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 配色 ================= -->
+  <section id="view-palette" class="view">
+    <div class="cols">
+      <div class="col-left">
+        <div class="card">
+          <div class="card-head"><span>取色</span></div>
+          <input type="color" id="pal-color" class="colorpick big" value="#8C5A2B">
+          <div class="xyz" id="pal-info"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span>主题色板</span></div>
+          <div class="btn-row" id="pal-themes"></div>
+          <div class="pal-list" id="pal-list"></div>
+        </div>
+      </div>
+
+      <div class="col-right">
+        <div class="card">
+          <div class="card-head"><span>常用色（16 色）</span></div>
+          <div class="swatches big" id="pal-common"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span>对比度检查</span></div>
+          <div id="pal-contrast"></div>
+          <p class="hint">≥4.5 优秀 / ≥3.0 尚可 / &lt;1.8 不合格（小屏上易糊）</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 代码 ================= -->
+  <section id="view-code" class="view">
+    <div class="card">
+      <div class="card-head">
+        <span>Arduino 代码</span>
+        <span class="btn-row inline">
+          <button id="code-gen">重新生成</button>
+          <button id="code-copy" class="primary">复制</button>
+          <button id="code-download">下载 .ino</button>
+        </span>
+      </div>
+      <div class="btn-row" style="margin-bottom:10px">
+        <button class="codekind active" data-kind="render">仅渲染函数</button>
+        <button class="codekind" data-kind="full">完整 .ino</button>
+        <button class="codekind" data-kind="json">布局 JSON</button>
+        <button class="codekind" data-kind="palette">配色宏</button>
+      </div>
+      <textarea id="code-out" class="code tall" readonly></textarea>
+      <p class="hint" id="code-hint"></p>
+    </div>
+  </section>
+
+  <!-- ================= 帮助 ================= -->
+  <section id="view-help" class="view">
+    <div class="card">
+      <div class="card-head"><span>这是什么</span></div>
+      <p>一个<b>纯网页</b>的 ESP32 TFT 界面设计器，无需安装、无需联网（离线可用）。</p>
+      <p>设计好的界面可以：</p>
+      <ul>
+        <li>导出 <b>Arduino 代码</b>，直接粘贴进你的工程</li>
+        <li>导出 <b>布局 JSON</b>，通过蓝牙发给支持该协议的固件</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span>快速上手</span></div>
+      <div class="step"><b>1</b><div>打开「模板」页选一个模板，或从空白开始</div></div>
+      <div class="step"><b>2</b><div>在「设计」页拖动元素、调整颜色和字号</div></div>
+      <div class="step"><b>3</b><div>需要图标就去「图标」页导入图片转点阵</div></div>
+      <div class="step"><b>4</b><div>到「代码」页复制生成的 Arduino 代码</div></div>
+      <div class="step"><b>5</b><div>粘贴进工程，按你的接线改引脚，编译烧录</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span>常见问题</span></div>
+      <div class="faq-q">生成的代码能直接用吗？</div>
+      <div class="faq-a">能编译。数据部分是占位（余额、Token 等），需要你接入真实数据源。
+      代码里已标注位置。</div>
+
+      <div class="faq-q">中文显示不出来？</div>
+      <div class="faq-a">Adafruit_GFX 不带中文字库。生成的代码用 <code>drawCN()</code> 占位，
+      你需要自己提供点阵字库（或改用英文/数字）。</div>
+
+      <div class="faq-q">引脚不一样怎么办？</div>
+      <div class="faq-a">生成的代码顶部有 <code>#define TFT_CS</code> 等宏，改成你的接线即可。
+      ST7735 与 ESP32 是普通 SPI，引脚可任意映射。</div>
+
+      <div class="faq-q">布局 JSON 怎么发给设备？</div>
+      <div class="faq-a">需要固件支持该协议。本仓库 <code>firmware/</code> 目录提供了一个
+      参考实现，通过 BLE 接收 JSON 并实时重排。</div>
+
+      <div class="faq-q">为什么颜色看起来和屏幕不一样？</div>
+      <div class="faq-a">浏览器是真彩色，而 ST7735 是 RGB565（16 位）。预览时会做量化模拟，
+      但廉价 TN 屏还有额外色偏，最终以实机为准。</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span>开源协议</span></div>
+      <p>MIT License — 可自由使用、修改、商用。</p>
+      <p class="hint">如果用得顺手，给个 Star ⭐</p>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
